@@ -2,6 +2,7 @@
 using MCC.TestTask.Infrastructure;
 using FluentResults;
 using Hangfire;
+using MCC.TestTask.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MCC.TestTask.App.Services.Mail;
@@ -19,9 +20,10 @@ public class MailJobService
 
     public Result NotifySubscribersAboutNewPost(Guid postId)
     {
-        return Result.Ok(); // doesn't work anyway, fix it later
-        
         var post = _blogDbContext.Posts
+            .Include(p => p.Community)
+            .ThenInclude(c => c.Subscribers)
+            .Include(p => p.Author)
             .FirstOrDefault(p => p.Id == postId && p.Community != null);
 
         if (post == null)
@@ -31,7 +33,7 @@ public class MailJobService
 
         var mailBody = post.Title + ":\n" + post.Description;
 
-        foreach (var subscriber in post.Community!.Subscribers)
+        foreach (var subscriber in post.Community.Subscribers ?? new List<User>())
             _backgroundJobClient.Enqueue<MailingService>(j =>
                 j.SendMail(subscriber.FullName, subscriber.Email, mailSubject, mailBody));
 

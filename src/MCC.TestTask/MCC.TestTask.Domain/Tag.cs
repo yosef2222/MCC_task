@@ -7,4 +7,6 @@ public class Tag
     public DateTime CreateTime { get; set; }
 
     public string Name { get; set; }
+    
+    public Guid? CreatedById { get; set; }
 }

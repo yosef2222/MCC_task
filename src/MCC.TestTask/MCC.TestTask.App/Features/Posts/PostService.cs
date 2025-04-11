@@ -74,11 +74,13 @@ public class PostService
         query = query.Where(p => p.Tags.Any(t => distinctTagIds.Contains(t.Id)));
     }
 
-    if (filter.MinReadingTime.HasValue)
-        query = query.Where(x => x.ReadingTime >= filter.MinReadingTime.Value);
-
-    if (filter.MaxReadingTime.HasValue)
-        query = query.Where(x => x.ReadingTime <= filter.MaxReadingTime.Value);
+    if (filter.MinReadingTime.HasValue || filter.MaxReadingTime.HasValue)
+    {
+        query = query.Where(x => 
+            (!filter.MinReadingTime.HasValue || x.ReadingTime >= filter.MinReadingTime.Value) &&
+            (!filter.MaxReadingTime.HasValue || x.ReadingTime <= filter.MaxReadingTime.Value)
+        );
+    }
 
     if (filter.OnlyMyCommunities.HasValue && userId.HasValue)
     {

@@ -21,7 +21,8 @@ public static class TagDtoConverters
         {
             Id = tag.Id,
             CreateTime = tag.CreateTime,
-            Name = tag.Name
+            Name = tag.Name,
+            CreatedById = tag.CreatedById
         };
     }
 }

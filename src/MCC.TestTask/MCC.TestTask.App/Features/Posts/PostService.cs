@@ -28,92 +28,111 @@ public class PostService
     }
 
     public async Task<Result<PostPagedListDto>> GetAllPostsAsync(Guid? userId,
-        PostListFilter filter,
-        PostSorting? sorting,
-        PaginationModel pagination)
+    PostListFilter filter,
+    PostSorting? sorting,
+    PaginationModel pagination)
+{
+    var userValidationResult = userId.HasValue
+        ? await CheckUserExistsAsync(userId.Value)
+        : Result.Ok();
+
+    if (!userValidationResult.IsSuccess)
+        return userValidationResult;
+
+    var communityValidationResult = filter.CommunityId.HasValue
+        ? await CheckCommunityExistsAsync(filter.CommunityId.Value)
+        : Result.Ok();
+
+    if (!communityValidationResult.IsSuccess)
+        return communityValidationResult;
+
+    var query = _blogDbContext.Posts
+        .Include(p => p.Author)
+        .Include(p => p.Community).ThenInclude(c => c.Creator)
+        .Include(p => p.Community).ThenInclude(c => c.Administrators)
+        .Include(p => p.Community).ThenInclude(c => c.Subscribers)
+        .Include(p => p.LikedBy)
+        .Include(p => p.Comments)
+        .Include(p => p.Tags)
+        .AsQueryable()
+        .ReadableByUser(userId);
+
+    if (!string.IsNullOrEmpty(filter.Author))
+        query = query.Where(x => x.Author.FullName.Contains(filter.Author));
+
+    if (filter.TagIds.Any())
     {
-        var userValidationResult = userId.HasValue
-            ? await CheckUserExistsAsync(userId.Value)
-            : Result.Ok();
+        var distinctTagIds = filter.TagIds.Distinct().ToList();
+        var existingTags = await _blogDbContext.Tags
+            .Where(t => distinctTagIds.Contains(t.Id))
+            .Select(t => t.Id)
+            .ToListAsync();
 
-        if (!userValidationResult.IsSuccess)
-            return userValidationResult;
+        if (existingTags.Count != distinctTagIds.Count)
+            return Result.Fail(new ValidationError("Invalid tag id"));
 
-        var communityValidationResult = filter.CommunityId.HasValue
-            ? await CheckCommunityExistsAsync(filter.CommunityId.Value)
-            : Result.Ok();
-
-        if (!communityValidationResult.IsSuccess)
-            return communityValidationResult;
-
-        var query = _blogDbContext.Posts.AsEnumerable()
-            .ReadableByUser(userId);
-
-        if (!string.IsNullOrEmpty(filter.Author))
-            query = query.Where(x => x.Author.FullName.Contains(filter.Author)).ToList();
-
-        if (filter.TagIds.Any())
-        {
-            var existingTagsCount = _blogDbContext.Tags.ToList().Where(t => filter.TagIds.Contains(t.Id)).Count();
-
-            if (existingTagsCount != filter.TagIds.Distinct().Count())
-                return Result.Fail(new ValidationError("Invalid tag id"));
-
-            query = query.Where(p => p.Tags.Any(t => filter.TagIds.Contains(t.Id))).ToList();
-        }
-
-        if (filter.MinReadingTime.HasValue)
-            query = query.Where(x => x.ReadingTime >= filter.MinReadingTime.Value).ToList();
-
-        if (filter.MaxReadingTime.HasValue)
-            query = query.Where(x => x.ReadingTime <= filter.MaxReadingTime.Value).ToList();
-
-        if (filter.OnlyMyCommunities.HasValue)
-            query = query.Where(p =>
-                p.Community != null && (
-                    p.Community.Creator.Id == userId
-                    || p.Community.Administrators.Any(a => a.Id == userId)
-                    || p.Community.Subscribers.Any(u => u.Id == userId))).ToList();
-
-        if (filter.CommunityId.HasValue)
-            query = query.Where(x => x.CommunityId == filter.CommunityId.Value).ToList();
-
-        var totalCount = query.Count();
-
-        query = sorting switch
-        {
-            PostSorting.CreateAsc => query.OrderBy(p => p.CreatedAt).ToList(),
-            PostSorting.CreateDesc => query.OrderByDescending(p => p.CreatedAt).ToList(),
-            PostSorting.LikeAsc => query.OrderBy(p => p.LikedBy.Count).ToList(),
-            PostSorting.LikeDesc => query.OrderByDescending(p => p.LikedBy.Count).ToList(),
-            null => query.ToList(),
-            _ => throw new ArgumentOutOfRangeException(nameof(sorting), sorting, null)
-        };
-
-        return new PostPagedListDto
-        {
-            Posts = query.Select(p=> new PostDto
-                {
-                    Id = p.Id,
-                    CreateTime = p.CreatedAt,
-                    Title = p.Title,
-                    Description = p.Description,
-                    ReadingTime = p.ReadingTime,
-                    Image = p.ImageUrl,
-                    AuthorId = p.AuthorId,
-                    Author = _blogDbContext.Posts.Where(post => post.Id == p.Id).Select(post => post.Author).FirstOrDefault()?.FullName,
-                    CommunityId = p.CommunityId,
-                    CommunityName = _blogDbContext.Posts.Where(post => post.Id == p.Id).Select(post => post.Community).FirstOrDefault()?.Name,
-                    Likes = _blogDbContext.Posts.Where(post => post.Id == p.Id).Select(post => post.LikedBy).First().Count(),
-                    HasLike = _blogDbContext.Posts.Where(post => post.Id == p.Id).Select(post => post.LikedBy.Any(lb => lb.Id == userId)).First(),
-                    CommentsCount = _blogDbContext.Posts.Where(post => post.Id == p.Id).Select(post => post.Comments).First().Count(),
-                    Tags = _blogDbContext.Posts.Where(post => post.Id == p.Id).Select(post => post.Tags).First().Select(t => t.ToDto()).ToList()
-                })
-                .Paginate(pagination)
-                .ToList(),
-            Pagination = pagination.ToDto(totalCount)
-        };
+        query = query.Where(p => p.Tags.Any(t => distinctTagIds.Contains(t.Id)));
     }
+
+    if (filter.MinReadingTime.HasValue)
+        query = query.Where(x => x.ReadingTime >= filter.MinReadingTime.Value);
+
+    if (filter.MaxReadingTime.HasValue)
+        query = query.Where(x => x.ReadingTime <= filter.MaxReadingTime.Value);
+
+    if (filter.OnlyMyCommunities.HasValue && userId.HasValue)
+    {
+        query = query.Where(p =>
+            p.Community != null && (
+                p.Community.Creator.Id == userId.Value ||
+                p.Community.Administrators.Any(a => a.Id == userId.Value) ||
+                p.Community.Subscribers.Any(s => s.Id == userId.Value)));
+    }
+
+    if (filter.CommunityId.HasValue)
+        query = query.Where(x => x.CommunityId == filter.CommunityId.Value);
+
+    var totalCount = await query.CountAsync();
+
+    query = sorting switch
+    {
+        PostSorting.CreateAsc => query.OrderBy(p => p.CreatedAt),
+        PostSorting.CreateDesc => query.OrderByDescending(p => p.CreatedAt),
+        PostSorting.LikeAsc => query.OrderBy(p => p.LikedBy.Count),
+        PostSorting.LikeDesc => query.OrderByDescending(p => p.LikedBy.Count),
+        null => query,
+        _ => throw new ArgumentOutOfRangeException(nameof(sorting), sorting, null)
+    };
+
+    var posts = await query
+        .Skip((pagination.Page - 1) * pagination.Size)
+        .Take(pagination.Size)
+        .Select(p => new PostDto
+        {
+            Id = p.Id,
+            CreateTime = p.CreatedAt,
+            Title = p.Title,
+            Description = p.Description,
+            ReadingTime = p.ReadingTime,
+            Image = p.ImageUrl,
+            AuthorId = p.AuthorId,
+            Author = p.Author.FullName,
+            CommunityId = p.CommunityId,
+            CommunityName = p.Community.Name,
+            Likes = p.LikedBy.Count,
+            HasLike = userId.HasValue && p.LikedBy.Any(lb => lb.Id == userId.Value),
+            CommentsCount = p.Comments.Count,
+            Tags = p.Tags.Select(t => t.ToDto()).ToList()
+        })
+        .ToListAsync();
+
+    return new PostPagedListDto
+    {
+        Posts = posts,
+        Pagination = pagination.ToDto(totalCount)
+    };
+}
+
 
     public async Task<Result<PostFullDto>> GetPostAsync(Guid postId, Guid? userId)
     {

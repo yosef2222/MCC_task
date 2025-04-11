@@ -1,20 +1,6 @@
 version: '3.8'
 
 services:
-  mcc-app:
-    build:
-      context: .
-      dockerfile: dockerfile
-    ports:
-      - "5000:8080"
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__BlogDbConnection: Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
-      ConnectionStrings__HangfireDbConnection: Host=postgres-hangfire;Port=5432;Database=hangfire;Username=postgres;Password=postgres
-    depends_on:
-      - postgres
-      - postgres-hangfire
-        
   postgres:
     image: postgres:latest
     container_name: postgres_container

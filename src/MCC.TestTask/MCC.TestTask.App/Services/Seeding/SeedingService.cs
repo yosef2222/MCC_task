@@ -53,11 +53,11 @@ public class SeedingService(
             await communityService.SubscribeUserToCommunityAsync(acCommunity.Id, ttUser.Id);
         
         var tagIds = new List<Guid>();
-        var oldestUserId = dbContext.Users.First().Id;
+        
         if(!dbContext.Tags.Any())
             for (var i = 0; i < 100; i++)
             {
-                var tag = await tagService.CreateTag("Tag #" + i, oldestUserId);
+                var tag = await tagService.CreateTag("Tag #" + i);
                 tagIds.Add(tag.Value);
             }
 

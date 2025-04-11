@@ -23,7 +23,7 @@ public class TagService
             .ToListAsync();
     }
 
-    public async Task<Result<Guid>> CreateTag(string name, Guid userId)
+    public async Task<Result<Guid>> CreateTag(string name)
     {
         if (await _blogDbContext.Tags.AnyAsync(t => t.Name == name))
             return CustomErrors.ValidationError("Tag already exists");
@@ -31,8 +31,7 @@ public class TagService
         var tag = new Tag
         {
             CreateTime = DateTime.UtcNow,
-            Name = name,
-            CreatedById = userId
+            Name = name
         };
 
         _blogDbContext.Tags.Add(tag);

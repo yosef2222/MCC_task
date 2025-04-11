@@ -65,3 +65,10 @@ Rewrite session storage to save sessions in the DB.
 Elf Drannor wanted to deploy our app to cloud, but got sick and didn't finish his task. 
 
 Could you help him out? Create a `Dockerfile` and `docker-compose.yml` that would allow to deploy our backend with a single `docker compose up -d` call.
+
+# Tasks done in this repository
+### Mailing problems [Bug]
+### Tag authors [Feature]
+### Posts retrieval [Bug]
+### More speeding-up [Bug]
+### Shipping Containers [Feature]
